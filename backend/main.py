@@ -1,4 +1,4 @@
-# backend-vibe-coder/main.py
+# backend/main.py
 from typing import List
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,8 +7,9 @@ import httpx # For making async HTTP requests to Ollama
 import os
 from dotenv import load_dotenv
 
-from . import models, schemas, crud
-from .database import engine, get_db, Base # Import Base for initial table creation if not using Alembic initially
+from app.models import schemas, models
+from app.services import service
+from app.database import engine, get_db, Base # Import Base for initial table creation if not using Alembic initially
 
 # Load environment variables
 load_dotenv()
@@ -79,13 +80,13 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(get_db)
     # Or, for simplicity, a fixed 'demo_user_123' if your authentication isn't fully set up yet.
     # Let's use a simplified user ID for now.
     user_id_placeholder = os.getenv("FIREBASE_APP_ID", "default_app_id") + "_demo_user" # Example if Firebase auth isn't fully integrated here
-    return crud.create_project(db=db, project=project, user_id=user_id_placeholder)
+    return service.create_project(db=db, project=project, user_id=user_id_placeholder)
 
 # Get all projects for a user
 @app.get("/projects/", response_model=List[schemas.Project])
 def read_projects(db: Session = Depends(get_db)):
     user_id_placeholder = os.getenv("FIREBASE_APP_ID", "default_app_id") + "_demo_user"
-    projects = crud.get_projects_by_user(db=db, user_id=user_id_placeholder)
+    projects = service.get_projects_by_user(db=db, user_id=user_id_placeholder)
     return projects
 
 # Main chat endpoint with LLM routing
@@ -98,7 +99,7 @@ async def chat_with_ai(chat_request: schemas.ChatRequest, db: Session = Depends(
     chat_history = chat_request.chat_history
 
     # Save user's message immediately
-    crud.create_message(db, schemas.MessageCreate(content=user_message, role="user"), project_id)
+    service.create_message(db, schemas.MessageCreate(content=user_message, role="user"), project_id)
 
     llm_response_content = ""
     llm_role = "assistant" # Default role for generated code
@@ -138,7 +139,7 @@ async def chat_with_ai(chat_request: schemas.ChatRequest, db: Session = Depends(
         raise HTTPException(status_code=400, detail="Invalid action specified.")
 
     # Save LLM's response
-    ai_message = crud.create_message(db, schemas.MessageCreate(content=llm_response_content, role=llm_role), project_id)
+    ai_message = service.create_message(db, schemas.MessageCreate(content=llm_response_content, role=llm_role), project_id)
 
     # Return the AI message to the frontend
     return schemas.Message.from_orm(ai_message)

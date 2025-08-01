@@ -1,9 +1,13 @@
 from logging.config import fileConfig
+import os
+from dotenv import load_dotenv
 
 from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
+from sqlalchemy import pool # Keep this import, or specifically import NullPool
 from alembic import context
+
+# Load environment variables FIRST
+load_dotenv()
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -16,9 +20,12 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = None
+# IMPORTANT: Adjust this import based on your project structure.
+# If `alembic/env.py` is in `backend/alembic/`, and `models.py` is in `backend/app/models/`,
+# then the import should be relative to the 'backend' root or based on how Python finds modules.
+# Assuming 'backend' is the root context when Alembic is run:
+from app.models.models import Base
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -38,7 +45,11 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    # Get DATABASE_URL from environment for offline mode
+    url = os.getenv("DATABASE_URL")
+    if url is None:
+        raise ValueError("DATABASE_URL environment variable is not set.")
+
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -57,10 +68,21 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # Get DATABASE_URL from environment for online mode
+    db_url = os.getenv("DATABASE_URL")
+    if db_url is None:
+        raise ValueError("DATABASE_URL environment variable is not set.")
+
+    # Create a config dictionary for engine_from_config
+    connectable_config = config.get_section(config.config_ini_section, {})
+    connectable_config["sqlalchemy.url"] = db_url # Override with environment variable
+    # --- FIX IS HERE ---
+    connectable_config["sqlalchemy.poolclass"] = pool.NullPool # Assign the actual class, not a string
+    # --- END FIX ---
+
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        connectable_config,
         prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
     )
 
     with connectable.connect() as connection:

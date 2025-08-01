@@ -1,7 +1,7 @@
-# backend-vibe-coder/models.py
+# backend/app/models/models.py
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, TIMESTAMP
 from sqlalchemy.orm import relationship
-from .database import Base
+from app.database import Base
 from datetime import datetime
 
 class Project(Base):

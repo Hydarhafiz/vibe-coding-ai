@@ -1,8 +1,8 @@
-# backend-vibe-coder/crud.py
+# backend/app/api/service.py
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
-from . import models, schemas
+from app.models import models, schemas
 
 # --- Project CRUD ---
 def get_project(db: Session, project_id: int):
