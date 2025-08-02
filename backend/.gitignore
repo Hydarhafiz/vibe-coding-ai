@@ -1,0 +1,9 @@
+/venv
+.env
+Dockerfile.*
+requirements.txt
+__pycache__/
+alembic/versions/
+*.pyc
+*.pyo
+*.pyd

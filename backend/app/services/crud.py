@@ -1,8 +1,8 @@
-# backend/app/api/service.py
+# backend/app/services/crud.py
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
-from app.models import models, schemas
+from app.models import models, schemas # Corrected import path
 
 # --- Project CRUD ---
 def get_project(db: Session, project_id: int):

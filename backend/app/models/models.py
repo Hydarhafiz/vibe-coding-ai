@@ -1,8 +1,9 @@
 # backend/app/models/models.py
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, TIMESTAMP
 from sqlalchemy.orm import relationship
-from app.database import Base
 from datetime import datetime
+
+from app.database import Base # Corrected import path for Base
 
 class Project(Base):
     __tablename__ = "projects"
