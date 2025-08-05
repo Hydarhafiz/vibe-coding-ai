@@ -42,9 +42,10 @@ export const projectService = {
 };
 
 export const chatService = {
-  // Send a chat request to the AI
-  chatWithAI: async (chatRequest: ChatRequest): Promise<Message> => {
-    const response = await apiClient.post<Message>('/chat/', chatRequest);
+  // === MODIFIED HERE ===
+  // Send a chat request to the AI, expecting a list of messages in return.
+  chatWithAI: async (chatRequest: ChatRequest): Promise<Message[]> => {
+    const response = await apiClient.post<Message[]>('/chat/', chatRequest);
     return response.data;
   },
 };
