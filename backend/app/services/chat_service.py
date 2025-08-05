@@ -1,80 +1,185 @@
 # backend/app/services/chat_service.py
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Tuple
 import os
 from fastapi import HTTPException
+import asyncio
 
 from app.models import schemas
 from app.services import crud # Import CRUD operations
 from app.services.llm_service import call_ollama # Import the Ollama calling function
 from app.utils import prompts # Import system prompts
 
-async def handle_chat_request(db: Session, chat_request: schemas.ChatRequest):
+async def handle_chat_request(db: Session, chat_request: schemas.ChatRequest) -> List[schemas.Message]:
     """
-    Handles different chat actions (code generation, analysis, summarization)
-    by calling the appropriate LLM and saving messages.
+    Handles a comprehensive chat request with a single, smart workflow.
+    It orchestrates multiple LLM calls (generate, then analyze) for a single user prompt.
+    Returns a list of new messages to be displayed in the frontend.
     """
     project_id = chat_request.project_id
-    user_id = chat_request.user_id # Get user_id from chat_request
-    user_message = chat_request.message_content
-    action = chat_request.action
+    user_message_content = chat_request.message_content
     programming_language = chat_request.programming_language
     chat_history = chat_request.chat_history
+    current_code = chat_request.current_code
+    action = chat_request.action # Now the action controls the workflow type
 
     # Save user's message immediately
-    # Note: crud.create_message only needs MessageCreate schema and project_id
-    crud.create_message(
+    user_message_db = crud.create_message(
         db,
-        schemas.MessageCreate(content=user_message, role="user"),
+        schemas.MessageCreate(content=user_message_content, role="user"),
         project_id
     )
 
-    llm_response_content = ""
-    llm_role = "assistant" # Default role for generated code
+    new_messages: List[schemas.Message] = [schemas.Message.from_orm(user_message_db)]
 
-    if action == "generate_code":
-        if not programming_language:
-            raise HTTPException(status_code=400, detail="Programming language is required for code generation.")
-        model_name = os.getenv("QWEN_CODE_GEN_MODEL", "qwen:7b-chat")
-        system_prompt = prompts.generate_code_prompt(programming_language)
-        # Pass the full chat history and the current user message
-        llm_response_content = await call_ollama(model_name, system_prompt, chat_history, user_message)
+    if action == "generate_and_analyze":
+        # Get the LLM models and prompts
+        code_gen_model = os.getenv("QWEN_CODE_GEN_MODEL", "qwen:7b-chat")
+        analyze_model = os.getenv("LLAMA_ANALYZE_MODEL", "llama3:8b")
 
-    elif action == "analyze_code":
-        if not programming_language:
-            raise HTTPException(status_code=400, detail="Programming language is required for code analysis.")
-        model_name = os.getenv("LLAMA_ANALYZE_MODEL", "llama3:8b")
-        system_prompt = prompts.analyze_code_prompt(programming_language)
-        # For analysis, user_message is typically the code to analyze.
-        # We might not want to send the entire chat history for analysis to keep the prompt focused.
-        # If the model benefits from history, you can include it. For now, empty list for history.
-        llm_response_content = await call_ollama(model_name, system_prompt, [], user_message)
-        llm_role = "analysis"
+        try:
+            # 1. Generate the code with the first LLM
+            # The prompt includes chat history for context
+            generate_prompt = prompts.generate_code_prompt(programming_language)
+            generated_code = await call_ollama(
+                code_gen_model,
+                system_prompt=generate_prompt,
+                chat_history=chat_history,
+                user_message=user_message_content
+            )
+
+            # 2. Analyze the generated code with the second LLM
+            # The prompt for analysis is the generated code itself
+            analysis_prompt = prompts.analyze_code_prompt(programming_language)
+            analysis_response = await call_ollama(
+                analyze_model,
+                system_prompt=analysis_prompt,
+                chat_history=[], # No need for full chat history here, the code is the context
+                user_message=generated_code
+            )
+
+            # 3. Save and return both messages
+            # Save the generated code
+            code_message_db = crud.create_message(
+                db,
+                schemas.MessageCreate(content=generated_code, role="assistant"),
+                project_id
+            )
+            new_messages.append(schemas.Message.from_orm(code_message_db))
+
+            # Save the analysis message
+            analysis_message_db = crud.create_message(
+                db,
+                schemas.MessageCreate(content=analysis_response, role="analysis"),
+                project_id
+            )
+            new_messages.append(schemas.Message.from_orm(analysis_message_db))
+            
+            return new_messages
+
+        except Exception as e:
+            # Handle potential errors during the multi-step process
+            error_message = f"An error occurred during code generation and analysis: {str(e)}"
+            error_msg_db = crud.create_message(
+                db,
+                schemas.MessageCreate(content=error_message, role="assistant"),
+                project_id
+            )
+            new_messages.append(schemas.Message.from_orm(error_msg_db))
+            return new_messages
 
     elif action == "summarize_chat":
+        # Keep the summary logic as a separate, one-off action
         model_name = os.getenv("LLAMA_SUMMARY_MODEL", "llama3:8b")
         system_prompt = prompts.summarize_chat_prompt()
-        # For summarization, the 'user_message' is usually the *entire* chat history concatenated.
-        # The 'chat_history' parameter to call_ollama will be an empty list as the user_message contains the history.
-        # It's better to pass only the system prompt and the concatenated chat history as the 'user_message' to Ollama.
         full_chat_text = "\n".join([f"{msg.role}: {msg.content}" for msg in chat_history])
-        if not full_chat_text: # If chat history is empty, nothing to summarize
+        
+        if not full_chat_text:
             llm_response_content = "No chat history available to summarize."
         else:
-            # When summarizing, the 'user_message' to Ollama should be the full chat to summarize.
-            # The 'chat_history' to Ollama should be empty as the 'user_message' is the context.
             llm_response_content = await call_ollama(model_name, system_prompt, [], full_chat_text)
-        llm_role = "summary"
+        
+        ai_message_db = crud.create_message(
+            db,
+            schemas.MessageCreate(content=llm_response_content, role="summary"),
+            project_id
+        )
+        new_messages.append(schemas.Message.from_orm(ai_message_db))
+        return new_messages
+
+    elif action == "analyze_code_only":
+        # This is for when the user wants to analyze the code from the editor, not generate new code
+        if not current_code:
+            error_message = "No code provided for analysis."
+            error_msg_db = crud.create_message(
+                db, schemas.MessageCreate(content=error_message, role="assistant"), project_id
+            )
+            new_messages.append(schemas.Message.from_orm(error_msg_db))
+            return new_messages
+        
+        analyze_model = os.getenv("LLAMA_ANALYZE_MODEL", "llama3:8b")
+        analysis_prompt = prompts.analyze_code_prompt(programming_language)
+        analysis_response = await call_ollama(
+            analyze_model,
+            system_prompt=analysis_prompt,
+            chat_history=[],
+            user_message=current_code
+        )
+        
+        analysis_message_db = crud.create_message(
+            db, schemas.MessageCreate(content=analysis_response, role="analysis"), project_id
+        )
+        new_messages.append(schemas.Message.from_orm(analysis_message_db))
+        return new_messages
+
+    # This part handles follow-up requests to modify existing code
+    elif action == "follow_up_modify":
+        if not current_code:
+            raise HTTPException(status_code=400, detail="Cannot follow up without existing code to modify.")
+        
+        code_gen_model = os.getenv("QWEN_CODE_GEN_MODEL", "qwen:7b-chat")
+        
+        # Combine the user's new request with the existing code for context
+        user_message_with_code = f"Here is the current code:\n```\n{current_code}\n```\n\nUser request: {user_message_content}"
+        
+        try:
+            generate_prompt = prompts.generate_code_prompt(programming_language)
+            modified_code = await call_ollama(
+                code_gen_model,
+                system_prompt=generate_prompt,
+                chat_history=chat_history,
+                user_message=user_message_with_code
+            )
+            
+            # Analyze the new code
+            analyze_model = os.getenv("LLAMA_ANALYZE_MODEL", "llama3:8b")
+            analysis_prompt = prompts.analyze_code_prompt(programming_language)
+            analysis_response = await call_ollama(
+                analyze_model,
+                system_prompt=analysis_prompt,
+                chat_history=[],
+                user_message=modified_code
+            )
+            
+            code_message_db = crud.create_message(
+                db, schemas.MessageCreate(content=modified_code, role="assistant"), project_id
+            )
+            new_messages.append(schemas.Message.from_orm(code_message_db))
+
+            analysis_message_db = crud.create_message(
+                db, schemas.MessageCreate(content=analysis_response, role="analysis"), project_id
+            )
+            new_messages.append(schemas.Message.from_orm(analysis_message_db))
+            
+            return new_messages
+            
+        except Exception as e:
+            error_message = f"An error occurred during code modification: {str(e)}"
+            error_msg_db = crud.create_message(
+                db, schemas.MessageCreate(content=error_message, role="assistant"), project_id
+            )
+            new_messages.append(schemas.Message.from_orm(error_msg_db))
+            return new_messages
 
     else:
         raise HTTPException(status_code=400, detail="Invalid action specified.")
-
-    # Save LLM's response
-    ai_message_db = crud.create_message(
-        db,
-        schemas.MessageCreate(content=llm_response_content, role=llm_role),
-        project_id
-    )
-
-    # Return the AI message to the frontend (as a Pydantic model)
-    return schemas.Message.from_orm(ai_message_db)

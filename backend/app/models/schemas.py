@@ -17,7 +17,7 @@ class Project(ProjectBase):
     updated_at: datetime
 
     class Config:
-        from_attributes = True # Use orm_mode=True for older Pydantic versions
+        from_attributes = True
 
 class MessageBase(BaseModel):
     content: str
@@ -32,12 +32,16 @@ class Message(MessageBase):
     created_at: datetime
 
     class Config:
-        from_attributes = True # Use orm_mode=True for older Pydantic versions
+        from_attributes = True
 
 class ChatRequest(BaseModel):
     project_id: int
     user_id: str
     message_content: str
-    action: str # 'generate_code', 'analyze_code', 'summarize_chat'
+    # action field will be simplified to just 'generate_and_analyze' or 'summarize'
+    # For now, let's keep it to handle the single workflow
+    action: str
     programming_language: str
-    chat_history: List[MessageBase] = [] # For sending context to LLM
+    chat_history: List[MessageBase] = []
+    # Add a field to hold the current code from the editor
+    current_code: Optional[str] = None

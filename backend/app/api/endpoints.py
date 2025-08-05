@@ -56,15 +56,16 @@ def read_messages_for_project_endpoint(project_id: int, db: Session = Depends(ge
 
 # --- Chat Endpoint ---
 
-@router.post("/chat/", response_model=schemas.Message)
+@router.post("/chat/", response_model=List[schemas.Message])
 async def chat_with_ai_endpoint(chat_request: schemas.ChatRequest, db: Session = Depends(get_db)):
     """
     Handles a chat request to the AI, orchestrating LLM calls and database interactions.
+    It now returns a list of messages from a single request.
     """
     try:
-        response_message = await chat_service.handle_chat_request(db, chat_request)
-        return response_message
+        response_messages = await chat_service.handle_chat_request(db, chat_request)
+        return response_messages
     except HTTPException as e:
-        raise e # Re-raise FastAPI HTTPExceptions
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred during chat: {str(e)}")
