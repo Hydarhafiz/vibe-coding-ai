@@ -27,6 +27,20 @@ def read_projects_endpoint(db: Session = Depends(get_db)):
     projects = service_crud.get_projects_by_user(db=db, user_id=user_id)
     return projects
 
+@router.get("/projects/{project_id}", response_model=schemas.Project)
+def read_project_endpoint(project_id: int, db: Session = Depends(get_db)):
+    """
+    Retrieve a single project by its ID.
+    """
+    project = service_crud.get_project(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    # Optional: Add user_id check if a project should only be accessible by its owner
+    # user_id = os.getenv("FIREBASE_APP_ID", "default_app_id") + "_demo_user"
+    # if project.user_id != user_id:
+    #     raise HTTPException(status_code=403, detail="Not authorized to access this project")
+    return project
+
 @router.get("/projects/{project_id}/messages/", response_model=List[schemas.Message])
 def read_messages_for_project_endpoint(project_id: int, db: Session = Depends(get_db)):
     messages = service_crud.get_messages_by_project(db=db, project_id=project_id)
