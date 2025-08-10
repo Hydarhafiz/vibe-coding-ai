@@ -16,14 +16,16 @@ import type { ChatRequest } from '../../interfaces/ChatRequest';
 const extractCode = (messageContent: string): string => {
     const match = messageContent.match(/```(?:.|\n)*?```/g);
     if (match) {
-        // We take the first match and clean up the markdown backticks
         return match[0].replace(/```[a-z]*\n|```/g, '').trim();
     }
     return '';
 };
 
-const isCodeMessage = (message: Message) => {
-    return message.role === 'assistant' && message.content.includes('```');
+// This function is no longer needed since we won't show code in the chat.
+// We'll keep a simplified version to find the code for the editor.
+const findCodeMessageContent = (messages: Message[]): string | null => {
+    const codeMessage = messages.find(msg => msg.role === 'assistant');
+    return codeMessage ? extractCode(codeMessage.content) : null;
 };
 
 const ProjectDetailPage: React.FC = () => {
@@ -35,7 +37,7 @@ const ProjectDetailPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [code, setCode] = useState<string>('');
     const chatEndRef = useRef<HTMLDivElement>(null);
-    const [isThinking, setIsThinking] = useState(false); // New state to disable buttons during AI processing
+    const [isThinking, setIsThinking] = useState(false);
 
     const parsedProjectId = projectId ? parseInt(projectId) : NaN;
 
@@ -62,9 +64,11 @@ const ProjectDetailPage: React.FC = () => {
             setProject(fetchedProject);
 
             const fetchedMessages = await projectService.getMessagesForProject(parsedProjectId);
-            setMessages(fetchedMessages);
+            // Filter out assistant messages from chat history before setting the state
+            const messagesToDisplay = fetchedMessages.filter(msg => msg.role !== 'assistant');
+            setMessages(messagesToDisplay);
 
-            const latestCodeMessage = [...fetchedMessages].reverse().find(msg => isCodeMessage(msg));
+            const latestCodeMessage = [...fetchedMessages].reverse().find(msg => msg.role === 'assistant');
             if (latestCodeMessage) {
                 setCode(extractCode(latestCodeMessage.content));
             }
@@ -76,51 +80,62 @@ const ProjectDetailPage: React.FC = () => {
         }
     };
     
-    // The main function to handle all AI interactions
-    const handleAction = async (action: 'generate_and_analyze' | 'analyze_code_only' | 'summarize_chat') => {
-        if (!project) return;
-        setIsThinking(true); // Disable buttons
+    // The main function to handle the unified AI interaction
+    const handleGenerateCode = async () => {
+        if (!project || isThinking) return;
+        
+        const userMessageContent = newMessage.trim();
+
+        // Only proceed if there's a message or code to work with
+        if (!userMessageContent && !code) {
+             return;
+        }
+        
+        setIsThinking(true);
 
         const userMessage: Message = {
-            id: Date.now(),
+            id: Date.now(), // Use a temporary unique ID
             project_id: parsedProjectId,
             role: 'user',
-            content: newMessage,
+            content: userMessageContent,
             created_at: new Date().toISOString(),
         };
-
-        // If the action is for analysis or a follow-up, send the code editor content as well
-        const messageContentToSend = (action === 'analyze_code_only' || newMessage.trim() === '') ? code : newMessage;
-        const chatHistoryForRequest = messages.map(msg => ({ content: msg.content, role: msg.role }));
 
         // Optimistically add user's message to the chat
         setMessages((prev) => [...prev, userMessage]);
         setNewMessage(''); // Clear the input
-
+        
         try {
             const chatRequest: ChatRequest = {
                 project_id: parsedProjectId,
                 user_id: import.meta.env.VITE_FIREBASE_APP_ID + "_demo_user",
-                message_content: messageContentToSend,
-                action: action,
+                message_content: userMessageContent,
                 programming_language: project.programming_language,
-                chat_history: chatHistoryForRequest,
+                chat_history: messages.map(msg => ({ content: msg.content, role: msg.role })),
                 current_code: code,
             };
 
             const aiResponses = await chatService.chatWithAI(chatRequest);
-            setMessages((prev) => [...prev, ...aiResponses]);
+            
+            // Filter out the 'user' message that was just sent from the backend response
+            const filteredResponses = aiResponses.filter(msg => msg.role !== 'user');
 
-            // Update code editor with the first message that contains a code block
-            const newCodeMessage = aiResponses.find(msg => isCodeMessage(msg));
+            // Find the analysis message
+            const analysisMessage = filteredResponses.find(msg => msg.role === 'analysis');
+            if(analysisMessage) {
+                setMessages((prev) => [...prev, analysisMessage]);
+            }
+
+            // Find the code message to update the editor
+            const newCodeMessage = filteredResponses.find(msg => msg.role === 'assistant');
             if (newCodeMessage) {
                 setCode(extractCode(newCodeMessage.content));
             }
-
+            
         } catch (err) {
             console.error('Error sending message:', err);
             setError('Failed to get AI response. Please try again.');
-            // Remove optimistic message on failure
+            // On failure, remove the optimistic user message
             setMessages((prev) => prev.filter(msg => msg.id !== userMessage.id));
         } finally {
             setIsThinking(false);
@@ -159,7 +174,6 @@ const ProjectDetailPage: React.FC = () => {
                                 key={msg.id}
                                 className={`p-2 rounded-lg max-w-[80%] ${
                                     msg.role === 'user' ? 'bg-blue-100 self-end text-right' : 
-                                    msg.role === 'assistant' ? 'bg-green-100 self-start text-left' :
                                     msg.role === 'analysis' ? 'bg-yellow-100 self-start text-left' :
                                     'bg-gray-200 self-start text-left'
                                 }`}
@@ -175,7 +189,7 @@ const ProjectDetailPage: React.FC = () => {
                     <div ref={chatEndRef} />
                 </div>
 
-                {/* Chat Input and Action Buttons */}
+                {/* Chat Input and Action Button */}
                 <div className="flex-shrink-0 flex items-center p-2 border-t mt-auto bg-white rounded-lg shadow-md">
                     <textarea
                         className="flex-grow p-2 border rounded-md resize-none mr-2 focus:ring-blue-500 focus:border-blue-500"
@@ -188,27 +202,11 @@ const ProjectDetailPage: React.FC = () => {
                     <div className="flex flex-col space-y-2">
                         {/* Unified button for primary workflow */}
                         <button
-                            onClick={() => handleAction('generate_and_analyze')}
+                            onClick={handleGenerateCode}
                             className="bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 text-sm disabled:bg-gray-400"
                             disabled={isThinking}
                         >
-                            Generate & Analyze
-                        </button>
-                        {/* Separate button for secondary workflow */}
-                        <button
-                            onClick={() => handleAction('analyze_code_only')}
-                            className="bg-orange-600 text-white py-2 px-4 rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 text-sm disabled:bg-gray-400"
-                            disabled={isThinking}
-                        >
-                            Analyze Current Code
-                        </button>
-                         {/* Summarize is a distinct, one-off action */}
-                        <button
-                            onClick={() => handleAction('summarize_chat')}
-                            className="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 text-sm disabled:bg-gray-400"
-                            disabled={isThinking}
-                        >
-                            Summarize Chat
+                            Generate Code
                         </button>
                     </div>
                 </div>

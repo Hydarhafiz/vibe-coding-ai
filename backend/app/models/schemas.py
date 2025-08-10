@@ -1,4 +1,3 @@
-# backend/app/models/schemas.py
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
@@ -38,9 +37,7 @@ class ChatRequest(BaseModel):
     project_id: int
     user_id: str
     message_content: str
-    # action field will be simplified to just 'generate_and_analyze' or 'summarize'
-    # For now, let's keep it to handle the single workflow
-    action: str
+    # The action field is no longer needed since there's one workflow
     programming_language: str
     chat_history: List[MessageBase] = []
     # Add a field to hold the current code from the editor
