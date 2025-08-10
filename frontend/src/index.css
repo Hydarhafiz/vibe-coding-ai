@@ -5,38 +5,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
-  Optional: Add any global, non-Tailwind specific base styles below the Tailwind directives.
-  Most of the default Vite/React styles are either handled by Tailwind's Preflight
-  or should be applied as utility classes directly in your components.
-
-  Here, we can keep the basic font-family definitions.
-  Tailwind's Preflight (part of @tailwind base) resets many browser defaults
-  and ensures consistent cross-browser styling.
-*/
-
+/* Global body styles for a light, modern look */
 body {
-  margin: 0;
-  /* Tailwind typically sets font-sans by default on <body> or <html> */
-  /* If you want a specific font, define it in tailwind.config.js or here */
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  @apply bg-gray-50 text-gray-800; /* Subtle light background and default text color */
 }
 
+/* Code font for pre-formatted text */
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 }
-
-/*
-  Removed redundant styles:
-  - :root styles: Tailwind's color/background/font handling via utility classes.
-  - a, h1, button styles: These should be handled with Tailwind utility classes
-    directly on the elements for consistency and maintainability.
-    Tailwind's preflight also normalizes many of these.
-  - @media (prefers-color-scheme: light) rules: Tailwind encourages
-    using its dark mode toggles or specific classes for dark/light themes.
-*/

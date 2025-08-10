@@ -21,13 +21,6 @@ const extractCode = (messageContent: string): string => {
     return '';
 };
 
-// This function is no longer needed since we won't show code in the chat.
-// We'll keep a simplified version to find the code for the editor.
-const findCodeMessageContent = (messages: Message[]): string | null => {
-    const codeMessage = messages.find(msg => msg.role === 'assistant');
-    return codeMessage ? extractCode(codeMessage.content) : null;
-};
-
 const ProjectDetailPage: React.FC = () => {
     const { projectId } = useParams<{ projectId: string }>();
     const [project, setProject] = useState<Project | null>(null);
@@ -148,40 +141,48 @@ const ProjectDetailPage: React.FC = () => {
             case 'python': return 'python';
             case 'java': return 'java';
             case 'typescript': return 'typescript';
+            case 'csharp': return 'csharp';
+            case 'go': return 'golang'; // Ace editor mode for Go is 'golang'
             default: return 'text';
         }
     };
 
-    if (loading) return <div className="p-4">Loading project...</div>;
-    if (error) return <div className="p-4 text-red-500">Error: {error}</div>;
-    if (!project) return <div className="p-4">Project not found.</div>;
+    if (loading) return <div className="flex items-center justify-center h-screen bg-gray-50 text-xl text-gray-700">Loading project...</div>;
+    if (error) return <div className="flex items-center justify-center h-screen bg-gray-50 text-xl text-red-500">Error: {error}</div>;
+    if (!project) return <div className="flex items-center justify-center h-screen bg-gray-50 text-xl text-gray-700">Project not found.</div>;
 
     const editorMode = getEditorMode(project.programming_language);
 
     return (
-        <div className="flex h-[calc(100vh-64px)]">
+        <div className="flex h-screen bg-gray-50 font-sans"> {/* Added bg-gray-50 and font-sans */}
             {/* Left Panel: Chat Interface */}
-            <div className="flex-1 flex flex-col p-4 border-r">
-                <h1 className="text-2xl font-bold mb-4">{project.project_name} ({project.programming_language})</h1>
+            <div className="flex-1 flex flex-col p-6 border-r border-gray-200 bg-white shadow-lg rounded-lg m-4"> {/* Enhanced styling */}
+                <h1 className="text-3xl font-extrabold text-gray-800 mb-6 border-b pb-4 border-gray-200"> {/* Larger, bolder title */}
+                    {project.project_name} ({project.programming_language})
+                </h1>
                 
                 {/* Chat History */}
-                <div className="flex-grow overflow-y-auto mb-4 p-4 border rounded-lg bg-gray-50 flex flex-col space-y-3">
+                <div className="flex-grow overflow-y-auto pr-2 mb-6 p-4 border border-gray-200 rounded-xl bg-gray-100 shadow-inner custom-scrollbar"> {/* Rounded, shadow, bg */}
                     {messages.length === 0 ? (
-                        <p className="text-gray-600 text-center italic">Start a conversation!</p>
+                        <p className="text-gray-500 text-center italic py-10">Start a conversation to generate or analyze code! ✨</p>
                     ) : (
                         messages.map((msg) => (
                             <div
                                 key={msg.id}
-                                className={`p-2 rounded-lg max-w-[80%] ${
-                                    msg.role === 'user' ? 'bg-blue-100 self-end text-right' : 
-                                    msg.role === 'analysis' ? 'bg-yellow-100 self-start text-left' :
-                                    'bg-gray-200 self-start text-left'
+                                className={`p-3 my-2 rounded-lg max-w-[85%] relative shadow-md break-words ${ // Consistent shadow
+                                    msg.role === 'user'
+                                        ? 'bg-blue-500 text-white self-end text-right rounded-br-none' // User bubble color
+                                        : msg.role === 'analysis'
+                                        ? 'bg-yellow-100 text-yellow-800 self-start text-left rounded-bl-none' // Analysis bubble color
+                                        : 'hidden' // Hide assistant code messages
                                 }`}
                             >
-                                <p className="font-semibold text-sm capitalize">{msg.role}:</p>
-                                <p className="whitespace-pre-wrap text-sm">{msg.content}</p>
-                                <span className="text-xs text-gray-500 block mt-1">
-                                    {new Date(msg.created_at).toLocaleTimeString()}
+                                <p className="font-semibold text-xs capitalize opacity-80 mb-1">
+                                    {msg.role === 'user' ? 'You' : msg.role === 'analysis' ? 'AI Analysis' : msg.role}
+                                </p>
+                                <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p> {/* Better line spacing */}
+                                <span className="text-xs opacity-70 block mt-2">
+                                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </span>
                             </div>
                         ))
@@ -190,32 +191,29 @@ const ProjectDetailPage: React.FC = () => {
                 </div>
 
                 {/* Chat Input and Action Button */}
-                <div className="flex-shrink-0 flex items-center p-2 border-t mt-auto bg-white rounded-lg shadow-md">
+                <div className="flex-shrink-0 flex items-center p-4 border border-gray-200 rounded-xl bg-white shadow-md"> {/* Integrated shadow */}
                     <textarea
-                        className="flex-grow p-2 border rounded-md resize-none mr-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="flex-grow p-3 border border-gray-300 rounded-lg resize-none mr-3 focus:ring-blue-500 focus:border-blue-500 text-gray-800 text-sm focus:outline-none transition duration-150 ease-in-out"
                         rows={3}
-                        placeholder={`Ask about ${project.programming_language} code, or paste code for analysis...`}
+                        placeholder="Describe the code you want, or ask for refinements..."
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                         disabled={isThinking}
                     />
-                    <div className="flex flex-col space-y-2">
-                        {/* Unified button for primary workflow */}
-                        <button
-                            onClick={handleGenerateCode}
-                            className="bg-purple-600 text-white py-2 px-4 rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 text-sm disabled:bg-gray-400"
-                            disabled={isThinking}
-                        >
-                            Generate Code
-                        </button>
-                    </div>
+                    <button
+                        onClick={handleGenerateCode}
+                        className="bg-gradient-to-r from-purple-600 to-indigo-700 text-white py-3 px-6 rounded-lg shadow-lg hover:from-purple-700 hover:to-indigo-800 focus:outline-none focus:ring-4 focus:ring-purple-300 focus:ring-offset-2 transition duration-200 ease-in-out text-base font-semibold disabled:from-gray-400 disabled:to-gray-500 disabled:shadow-none disabled:cursor-not-allowed"
+                        disabled={isThinking}
+                    >
+                        {isThinking ? 'Thinking...' : 'Generate Code'}
+                    </button>
                 </div>
             </div>
 
             {/* Right Panel: Code Editor */}
-            <div className="flex-1 p-4 flex flex-col">
-                <h2 className="text-xl font-bold mb-4">Code Editor</h2>
-                <div className="flex-grow border rounded-lg overflow-hidden">
+            <div className="flex-1 p-6 flex flex-col bg-white shadow-lg rounded-lg m-4"> {/* Enhanced styling */}
+                <h2 className="text-3xl font-extrabold text-gray-800 mb-6 border-b pb-4 border-gray-200">Code Editor</h2>
+                <div className="flex-grow border border-gray-200 rounded-xl overflow-hidden shadow-inner"> {/* Matching border and shadow */}
                     <AceEditor
                         mode={editorMode}
                         theme="monokai"
@@ -232,7 +230,7 @@ const ProjectDetailPage: React.FC = () => {
                             showLineNumbers: true,
                             tabSize: 2,
                         }}
-                        style={{ width: '100%', height: '100%' }}
+                        style={{ width: '100%', height: '100%', borderRadius: '0.75rem' }} // Apply border-radius via style prop for AceEditor
                     />
                 </div>
             </div>
