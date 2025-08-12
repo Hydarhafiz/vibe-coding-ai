@@ -11,6 +11,7 @@ import "ace-builds/src-noconflict/mode-javascript"; // Example mode
 import "ace-builds/src-noconflict/theme-monokai";   // Example theme
 import "ace-builds/src-noconflict/ext-language_tools"; // Autocompletion, etc.
 import type { ChatRequest } from '../../interfaces/ChatRequest';
+import ReactMarkdown from 'react-markdown';
 
 // Helper function to extract the code block from a message
 const extractCode = (messageContent: string): string => {
@@ -72,18 +73,18 @@ const ProjectDetailPage: React.FC = () => {
             setLoading(false);
         }
     };
-    
+
     // The main function to handle the unified AI interaction
     const handleGenerateCode = async () => {
         if (!project || isThinking) return;
-        
+
         const userMessageContent = newMessage.trim();
 
         // Only proceed if there's a message or code to work with
         if (!userMessageContent && !code) {
-             return;
+            return;
         }
-        
+
         setIsThinking(true);
 
         const userMessage: Message = {
@@ -97,7 +98,7 @@ const ProjectDetailPage: React.FC = () => {
         // Optimistically add user's message to the chat
         setMessages((prev) => [...prev, userMessage]);
         setNewMessage(''); // Clear the input
-        
+
         try {
             const chatRequest: ChatRequest = {
                 project_id: parsedProjectId,
@@ -109,13 +110,13 @@ const ProjectDetailPage: React.FC = () => {
             };
 
             const aiResponses = await chatService.chatWithAI(chatRequest);
-            
+
             // Filter out the 'user' message that was just sent from the backend response
             const filteredResponses = aiResponses.filter(msg => msg.role !== 'user');
 
             // Find the analysis message
             const analysisMessage = filteredResponses.find(msg => msg.role === 'analysis');
-            if(analysisMessage) {
+            if (analysisMessage) {
                 setMessages((prev) => [...prev, analysisMessage]);
             }
 
@@ -124,7 +125,7 @@ const ProjectDetailPage: React.FC = () => {
             if (newCodeMessage) {
                 setCode(extractCode(newCodeMessage.content));
             }
-            
+
         } catch (err) {
             console.error('Error sending message:', err);
             setError('Failed to get AI response. Please try again.');
@@ -160,30 +161,35 @@ const ProjectDetailPage: React.FC = () => {
                 <h1 className="text-3xl font-extrabold text-gray-800 mb-6 border-b pb-4 border-gray-200"> {/* Larger, bolder title */}
                     {project.project_name} ({project.programming_language})
                 </h1>
-                
+
                 {/* Chat History */}
-                <div className="flex-grow overflow-y-auto pr-2 mb-6 p-4 border border-gray-200 rounded-xl bg-gray-100 shadow-inner custom-scrollbar"> {/* Rounded, shadow, bg */}
+                <div className="flex-grow overflow-y-auto pr-2 mb-6 p-4 border border-gray-200 rounded-xl bg-gray-100 shadow-inner custom-scrollbar">
                     {messages.length === 0 ? (
                         <p className="text-gray-500 text-center italic py-10">Start a conversation to generate or analyze code! ✨</p>
                     ) : (
                         messages.map((msg) => (
                             <div
                                 key={msg.id}
-                                className={`p-3 my-2 rounded-lg max-w-[85%] relative shadow-md break-words ${ // Consistent shadow
-                                    msg.role === 'user'
-                                        ? 'bg-blue-500 text-white self-end text-right rounded-br-none' // User bubble color
-                                        : msg.role === 'analysis'
-                                        ? 'bg-yellow-100 text-yellow-800 self-start text-left rounded-bl-none' // Analysis bubble color
-                                        : 'hidden' // Hide assistant code messages
-                                }`}
+                                // Change the className here
+                                className={`flex my-2 break-words ${msg.role === 'user' ? 'justify-end' : 'justify-start'
+                                    }`}
                             >
-                                <p className="font-semibold text-xs capitalize opacity-80 mb-1">
-                                    {msg.role === 'user' ? 'You' : msg.role === 'analysis' ? 'AI Analysis' : msg.role}
-                                </p>
-                                <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p> {/* Better line spacing */}
-                                <span className="text-xs opacity-70 block mt-2">
-                                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
+                                <div
+                                    className={`p-3 rounded-lg shadow-md max-w-[85%] ${msg.role === 'user'
+                                            ? 'bg-blue-500 text-white rounded-br-none'
+                                            : 'bg-yellow-100 text-yellow-800 rounded-bl-none'
+                                        }`}
+                                >
+                                    <p className="font-semibold text-xs capitalize opacity-80 mb-1">
+                                        {msg.role === 'user' ? 'You' : msg.role === 'analysis' ? 'AI Analysis' : msg.role}
+                                    </p>
+                                    <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                    </div>
+                                    <span className="text-xs opacity-70 block mt-2">
+                                        {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                </div>
                             </div>
                         ))
                     )}
